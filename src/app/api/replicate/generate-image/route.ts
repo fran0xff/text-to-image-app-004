@@ -12,7 +12,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const { prompt } = await request.json();
+  const { 
+    prompt, 
+    negative_prompt, 
+    width = 512, 
+    height = 512, 
+    guidance_scale = 7.5, 
+    num_inference_steps = 50, 
+    scheduler = "DPMSolverMultistep" 
+  } = await request.json();
+
+  if (!prompt) {
+    return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
+  }
 
   try {
     const output = await replicate.run(
@@ -20,11 +32,13 @@ export async function POST(request: Request) {
       {
         input: {
           prompt: prompt,
-          image_dimensions: "512x512",
+          negative_prompt: negative_prompt || "",
+          width: width,
+          height: height,
           num_outputs: 1,
-          num_inference_steps: 50,
-          guidance_scale: 7.5,
-          scheduler: "DPMSolverMultistep",
+          num_inference_steps: num_inference_steps,
+          guidance_scale: guidance_scale,
+          scheduler: scheduler,
         },
       }
     );
@@ -32,6 +46,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ output }, { status: 200 });
   } catch (error) {
     console.error("Error from Replicate API:", error);
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+    
+    // Provide more specific error messages
+    let errorMessage = "Failed to generate image";
+    if (error instanceof Error) {
+      if (error.message.includes("rate limit")) {
+        errorMessage = "Rate limit exceeded. Please try again in a few minutes.";
+      } else if (error.message.includes("invalid")) {
+        errorMessage = "Invalid parameters. Please check your prompt and settings.";
+      } else if (error.message.includes("timeout")) {
+        errorMessage = "Request timed out. Please try again.";
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
